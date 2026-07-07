@@ -70,19 +70,25 @@ UgandaOne integrates six simulated sovereign agency endpoints, accessible throug
 
 ---
 
-## ⚙️ Technical deep Dive: How It Works Under the Hood
+## ⚙️ Technical Deep Dive: How It Works Under the Hood
 
 ### 🔒 e-KYC & Cryptographic Handshake Emulation
 When a citizen logs in, UgandaOne initiates a zero-trust login sequence simulating decentralized identity providers. 
-1. The client sends the `NIN` and `PIN` to the simulated NIRA Node via `dpiGateway.verifyNIN()`.
-2. Upon successful authentication, the node issues a JWT-like signed state token using HMAC emulation:
+1. The client triggers a multi-step **SIM-Bound Secure Handshake** sequence displaying out-of-band multi-factor authentication stages:
+   * **Stage 1**: Initiating decentralized Zero-Knowledge authentication challenge.
+   * **Stage 2**: Sending secure out-of-band SIM push notification to registered device (`+256 772 345 678`).
+   * **Stage 3**: Waiting for citizen biometric confirmation or swipe on the hardware module.
+   * **Stage 4**: Exchanging short-lived scoped cryptographic keys via ECDH-P256.
+   * **Stage 5**: Cryptographic signature validation & issuing secure session token.
+2. The client then completes the login with `dpiGateway.verifyNIN()`.
+3. Upon successful authentication, the node issues a JWT-like signed state token using HMAC emulation:
    ```typescript
    // Emulation of e-KYC crypto signature
    signNINToken(nin: string): string {
      const header = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
      const payload = btoa(JSON.stringify({
        sub: nin,
-       fullName: niraDb.fullName,
+       fullName: 'MUKASA SSEWANYANA',
        iss: 'NIRA_SECURE_GATEWAY',
        exp: Math.floor(Date.now() / 1000) + 3600
      }));
@@ -90,9 +96,20 @@ When a citizen logs in, UgandaOne initiates a zero-trust login sequence simulati
      return `jwt_${header}.${payload}.${signature}`;
    }
    ```
-3. Downstream portals use this token's header validation to authorize cross-agency ledger reads. If the user activates **Identity Lock**, NIRA flags the credential, invalidating downstream queries instantly and demonstrating federated access revocation.
+4. Downstream portals use this token's header validation to authorize cross-agency ledger reads. If the user activates **Identity Lock**, NIRA flags the credential, invalidating downstream queries instantly and demonstrating federated access revocation.
 
-### ⚡ The DPI Sandbox & Resiliency Console
+### 🛡️ Estonia Transparency Model & Real-time Audit Logging
+Inspired by Estonia's citizen-centric transparency principles, UgandaOne implements an active, real-time decentralized transaction ledger tracking every single data access request:
+- **Traceable Ledger**: Every query made by government administrators, third-party services, or the citizen themselves is cryptographically logged with a unique transaction ID (e.g., `TX-100412`), timestamp, active node indicator, actor, action, and access status.
+- **Node-Level Filtering**: Citizens can drill down into log history by individual agency nodes (NIRA, URA, URSB, MoWT, NSSF, DCIC) directly within their NIRA Identity portal.
+- **Visual Accountability**: The audit trail exposes the exact *Scope of Transmitted Payload*, highlighting compliance with **Data Minimization (Zero-Knowledge Proof)** guidelines (such as verifying age/citizenship thresholds without transmitting complete dossiers).
+
+### ⚡ Zero-Trust Cross-Agency Gatekeeping
+Cross-agency workflows enforce rigorous decentralized verification before retrieving sensitive profiles or issuing corporate licenses:
+- **Drivers' Licensing Gates**: Before retrieving or renewing driving permit data from the Ministry of Works & Transport (MoWT), the platform performs an upstream Zero-Knowledge check (`verifyAgeAndCitizenship`) against the NIRA foundational node. The request is aborted if criteria are not met or if the National ID is locked.
+- **Instant TIN Registration Gates**: Before URA registers a corporate tax identification number, an upstream query verifying tax standing compliance (`verifyTaxCompliance`) is issued. Handshakes are strictly gatekept via ECDH key exchanges to prevent tax spoofing or identity theft.
+
+### 🔌 The DPI Sandbox & Resiliency Console
 UgandaOne features an embedded **DPI Developer & Sandbox Console** to let engineers test the platform under realistic African network infrastructure conditions:
 
 * **Simulated Network Latency (Estonia X-Road routing)**:
