@@ -12,7 +12,8 @@ import {
   NssfAccount,
   PassportApplication,
   GatewayResponse,
-  ActiveFile
+  ActiveFile,
+  PaymentReceipt
 } from '../types';
 
 /**
@@ -20,6 +21,8 @@ import {
  * Strictly isolated memory structures, representing autonomous agency databases
  * with independent memory states and security constraints.
  */
+
+const sentReceiptsDb: PaymentReceipt[] = [];
 
 class NiraNodeService {
   private niraDb: CitizenProfile = {
@@ -32,6 +35,7 @@ class NiraNodeService {
     cardStatus: 'VERIFIED',
     isCardLocked: false,
     phoneNumber: '+256 772 345 678',
+    email: 'mpangabenard2584@gmail.com',
     address: 'Plot 45, Acacia Avenue, Kampala, Central',
     avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=200'
   };
@@ -839,8 +843,9 @@ export const dpiGateway = {
   async executeMobileMoneyPayment(
     prnCode: string,
     phoneNumber: string,
-    provider: 'MTN' | 'AIRTEL'
-  ): Promise<GatewayResponse<{ transactionId: string; record: PrnRecord }>> {
+    provider: 'MTN' | 'AIRTEL',
+    email?: string
+  ): Promise<GatewayResponse<{ transactionId: string; record: PrnRecord; receipt: PaymentReceipt }>> {
     const latency = await this.wait();
 
     try {
@@ -876,9 +881,27 @@ export const dpiGateway = {
       const airtelId = 'TXN-ART-' + Math.floor(10000000 + Math.random() * 90000000).toString();
       const txnId = provider === 'MTN' ? mtnId : airtelId;
 
+      const payerEmail = email || 'mpangabenard2584@gmail.com';
+
+      // Generate payment receipt
+      const receipt: PaymentReceipt = {
+        id: 'RCP-' + Math.floor(100000 + Math.random() * 900000).toString(),
+        prn: prnCode,
+        category: paidRecord.category,
+        amount: paidRecord.amount,
+        payerName: paidRecord.applicantName,
+        payerEmail: payerEmail,
+        paymentMethod: 'momo',
+        paymentDetails: `${provider} MoMo (+256 ${cleanedPhone})`,
+        transactionId: txnId,
+        timestamp: new Date().toISOString()
+      };
+
+      sentReceiptsDb.push(receipt);
+
       logAuditEntry({
         actor: `${provider} MoMo Ledger Broker`,
-        action: 'Execute USSD Push Secure Settlement',
+        action: `Execute USSD Push Secure Settlement (Receipt sent to ${payerEmail})`,
         dataAccessed: 'Payment clearance token matching PRN',
         status: 'SUCCESS',
         agencyNode: 'URA_NODE'
@@ -888,7 +911,8 @@ export const dpiGateway = {
         success: true,
         data: {
           transactionId: txnId,
-          record: paidRecord
+          record: paidRecord,
+          receipt
         },
         networkLatencyMs: latency,
         timestamp: new Date().toISOString(),
@@ -903,6 +927,184 @@ export const dpiGateway = {
         agencyNode: 'URA_NODE'
       };
     }
+  },
+
+  async executeCardPayment(
+    prnCode: string,
+    cardNumber: string,
+    expiry: string,
+    cvv: string,
+    cardholderName: string,
+    email: string
+  ): Promise<GatewayResponse<{ transactionId: string; record: PrnRecord; receipt: PaymentReceipt }>> {
+    const latency = await this.wait();
+
+    try {
+      if (!cardNumber || cardNumber.replace(/\s/g, '').length < 16) {
+        return {
+          success: false,
+          error: 'INVALID_CARD: Please provide a valid 16-digit debit/credit card number.',
+          networkLatencyMs: latency,
+          timestamp: new Date().toISOString(),
+          agencyNode: 'URA_NODE'
+        };
+      }
+
+      // Perform isolated payment registration at the URA Node
+      const paidRecord = uraNode.markPrnPaid(prnCode);
+
+      // Secure Zero-Knowledge state transitions triggered downstream
+      if (paidRecord.category.includes('Passport')) {
+        dcicNode.markPaid();
+        const fileIndex = activeFilesDb.findIndex((f) => f.title.includes('Passport'));
+        if (fileIndex !== -1) {
+          activeFilesDb[fileIndex].status = 'Processing';
+          activeFilesDb[fileIndex].updatedAt = 'Paid via Secure Card Terminal';
+        }
+      } else if (paidRecord.category.includes('Permit') || paidRecord.category.includes('License')) {
+        mowtNode.extendPermitValidity();
+      } else if (paidRecord.category.includes('Business') || paidRecord.category.includes('Company')) {
+        ursbNode.markAnnualReturnsCompliant();
+      }
+
+      const txnId = 'TXN-CRD-' + Math.floor(10000000 + Math.random() * 90000000).toString();
+      const payerEmail = email || 'mpangabenard2584@gmail.com';
+      const last4 = cardNumber.replace(/\s/g, '').slice(-4);
+
+      // Generate payment receipt
+      const receipt: PaymentReceipt = {
+        id: 'RCP-' + Math.floor(100000 + Math.random() * 900000).toString(),
+        prn: prnCode,
+        category: paidRecord.category,
+        amount: paidRecord.amount,
+        payerName: cardholderName || paidRecord.applicantName,
+        payerEmail: payerEmail,
+        paymentMethod: 'card',
+        paymentDetails: `Card ending in *${last4}`,
+        transactionId: txnId,
+        timestamp: new Date().toISOString()
+      };
+
+      sentReceiptsDb.push(receipt);
+
+      logAuditEntry({
+        actor: 'URA Credit/Debit Card Broker',
+        action: `Execute Card Clearance Secure Settlement (Receipt sent to ${payerEmail})`,
+        dataAccessed: 'Card authorization token matching PRN',
+        status: 'SUCCESS',
+        agencyNode: 'URA_NODE'
+      });
+
+      return {
+        success: true,
+        data: {
+          transactionId: txnId,
+          record: paidRecord,
+          receipt
+        },
+        networkLatencyMs: latency,
+        timestamp: new Date().toISOString(),
+        agencyNode: 'URA_NODE'
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        error: secureErrorMapper(err),
+        networkLatencyMs: latency,
+        timestamp: new Date().toISOString(),
+        agencyNode: 'URA_NODE'
+      };
+    }
+  },
+
+  async executeBankTransferPayment(
+    prnCode: string,
+    bankName: string,
+    accountNumber: string,
+    accountName: string,
+    email: string
+  ): Promise<GatewayResponse<{ transactionId: string; record: PrnRecord; receipt: PaymentReceipt }>> {
+    const latency = await this.wait();
+
+    try {
+      if (!accountNumber || accountNumber.trim().length < 8) {
+        return {
+          success: false,
+          error: 'INVALID_ACCOUNT: Please provide a valid bank account number.',
+          networkLatencyMs: latency,
+          timestamp: new Date().toISOString(),
+          agencyNode: 'URA_NODE'
+        };
+      }
+
+      // Perform isolated payment registration at the URA Node
+      const paidRecord = uraNode.markPrnPaid(prnCode);
+
+      // Secure Zero-Knowledge state transitions triggered downstream
+      if (paidRecord.category.includes('Passport')) {
+        dcicNode.markPaid();
+        const fileIndex = activeFilesDb.findIndex((f) => f.title.includes('Passport'));
+        if (fileIndex !== -1) {
+          activeFilesDb[fileIndex].status = 'Processing';
+          activeFilesDb[fileIndex].updatedAt = 'Paid via EFT/Bank Transfer';
+        }
+      } else if (paidRecord.category.includes('Permit') || paidRecord.category.includes('License')) {
+        mowtNode.extendPermitValidity();
+      } else if (paidRecord.category.includes('Business') || paidRecord.category.includes('Company')) {
+        ursbNode.markAnnualReturnsCompliant();
+      }
+
+      const txnId = 'TXN-EFT-' + Math.floor(10000000 + Math.random() * 90000000).toString();
+      const payerEmail = email || 'mpangabenard2584@gmail.com';
+
+      // Generate payment receipt
+      const receipt: PaymentReceipt = {
+        id: 'RCP-' + Math.floor(100000 + Math.random() * 900000).toString(),
+        prn: prnCode,
+        category: paidRecord.category,
+        amount: paidRecord.amount,
+        payerName: accountName || paidRecord.applicantName,
+        payerEmail: payerEmail,
+        paymentMethod: 'bank',
+        paymentDetails: `Bank EFT: ${bankName} (${accountNumber.slice(-4).padStart(accountNumber.length, '*')})`,
+        transactionId: txnId,
+        timestamp: new Date().toISOString()
+      };
+
+      sentReceiptsDb.push(receipt);
+
+      logAuditEntry({
+        actor: 'NITA-U Interoperability Bank Gateway',
+        action: `Execute Bank Transfer Clearing (Receipt sent to ${payerEmail})`,
+        dataAccessed: 'EFT payment settlements index',
+        status: 'SUCCESS',
+        agencyNode: 'URA_NODE'
+      });
+
+      return {
+        success: true,
+        data: {
+          transactionId: txnId,
+          record: paidRecord,
+          receipt
+        },
+        networkLatencyMs: latency,
+        timestamp: new Date().toISOString(),
+        agencyNode: 'URA_NODE'
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        error: secureErrorMapper(err),
+        networkLatencyMs: latency,
+        timestamp: new Date().toISOString(),
+        agencyNode: 'URA_NODE'
+      };
+    }
+  },
+
+  async getSentReceipts(): Promise<PaymentReceipt[]> {
+    return [...sentReceiptsDb];
   },
 
   /**

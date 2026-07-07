@@ -15,7 +15,11 @@ import {
   Lock,
   ArrowLeft,
   Loader2,
-  CheckCircle2
+  CheckCircle2,
+  Mail,
+  Check,
+  ExternalLink,
+  FileText
 } from 'lucide-react';
 
 interface MobileMoneyCheckoutProps {
@@ -42,6 +46,19 @@ export const MobileMoneyCheckout: React.FC<MobileMoneyCheckoutProps> = ({
   const [phoneNumber, setPhoneNumber] = useState('');
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [completedTransaction, setCompletedTransaction] = useState<{ txnId: string; record: PrnRecord } | null>(null);
+  const [completedReceipt, setCompletedReceipt] = useState<any | null>(null);
+
+  // Credit Card States
+  const [cardNumber, setCardNumber] = useState('');
+  const [cardExpiry, setCardExpiry] = useState('');
+  const [cardCvv, setCardCvv] = useState('');
+  const [cardholderName, setCardholderName] = useState('');
+  const [payerEmail, setPayerEmail] = useState('mpangabenard2584@gmail.com');
+
+  // EFT Bank Transfer States
+  const [bankName, setBankName] = useState('Stanbic Bank Uganda');
+  const [bankAccountNumber, setBankAccountNumber] = useState('');
+  const [bankAccountName, setBankAccountName] = useState('');
 
   // Load PRN Details
   useEffect(() => {
@@ -54,9 +71,15 @@ export const MobileMoneyCheckout: React.FC<MobileMoneyCheckoutProps> = ({
           setPrnRecord(res.data);
           // Auto-fill phone number from profile
           if (profile?.phoneNumber) {
-            // strip prefix for display
             const rawPhone = profile.phoneNumber.replace('+256', '').replace(/\s/g, '');
             setPhoneNumber(rawPhone);
+          }
+          if (profile?.fullName) {
+            setCardholderName(profile.fullName);
+            setBankAccountName(profile.fullName);
+          }
+          if (profile?.email) {
+            setPayerEmail(profile.email);
           }
         } else {
           setError(res.error || 'PRN Verification failed.');
@@ -80,7 +103,6 @@ export const MobileMoneyCheckout: React.FC<MobileMoneyCheckoutProps> = ({
     if (!prnRecord) return;
     setError(null);
 
-    // Verify phone format
     const cleanPhone = phoneNumber.replace(/\D/g, '');
     if (cleanPhone.length < 9) {
       setError('Please provide a valid 9-digit Ugandan mobile number (7XX XXX XXX or 9XX XXX XXX).');
@@ -93,18 +115,116 @@ export const MobileMoneyCheckout: React.FC<MobileMoneyCheckoutProps> = ({
       const res = await dpiGateway.executeMobileMoneyPayment(
         prnRecord.prn,
         fullPhoneNumber,
-        momoProvider
+        momoProvider,
+        payerEmail
       );
       if (res.success && res.data) {
         setCompletedTransaction({
           txnId: res.data.transactionId,
           record: res.data.record
         });
+        setCompletedReceipt(res.data.receipt);
       } else {
         setError(res.error || 'Mobile Money transaction was declined.');
       }
     } catch (err: any) {
       setError(err.message || 'Gateway carrier timeout.');
+    } finally {
+      setIsProcessingPayment(false);
+    }
+  };
+
+  const handleExecuteCardPayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!prnRecord) return;
+    setError(null);
+
+    const cleanCard = cardNumber.replace(/\D/g, '');
+    if (cleanCard.length < 16) {
+      setError('Please enter a valid 16-digit card number.');
+      return;
+    }
+    if (!cardExpiry.includes('/') || cardExpiry.length < 5) {
+      setError('Please enter a valid expiry date (MM/YY).');
+      return;
+    }
+    if (cardCvv.replace(/\D/g, '').length < 3) {
+      setError('Please enter a valid 3-digit CVV.');
+      return;
+    }
+    if (!cardholderName.trim()) {
+      setError('Please enter the cardholder name.');
+      return;
+    }
+    if (!payerEmail.trim() || !payerEmail.includes('@')) {
+      setError('Please enter a valid email address to receive your payment receipt.');
+      return;
+    }
+
+    setIsProcessingPayment(true);
+    try {
+      const res = await dpiGateway.executeCardPayment(
+        prnRecord.prn,
+        cleanCard,
+        cardExpiry,
+        cardCvv,
+        cardholderName,
+        payerEmail
+      );
+      if (res.success && res.data) {
+        setCompletedTransaction({
+          txnId: res.data.transactionId,
+          record: res.data.record
+        });
+        setCompletedReceipt(res.data.receipt);
+      } else {
+        setError(res.error || 'Card clearance transaction was declined.');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Downstream credit card acquirer timeout.');
+    } finally {
+      setIsProcessingPayment(false);
+    }
+  };
+
+  const handleExecuteBankPayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!prnRecord) return;
+    setError(null);
+
+    if (!bankAccountNumber.trim() || bankAccountNumber.length < 8) {
+      setError('Please enter a valid bank account number (at least 8 digits).');
+      return;
+    }
+    if (!bankAccountName.trim()) {
+      setError('Please enter the account holder name.');
+      return;
+    }
+    if (!payerEmail.trim() || !payerEmail.includes('@')) {
+      setError('Please enter a valid email address to receive your payment receipt.');
+      return;
+    }
+
+    setIsProcessingPayment(true);
+    try {
+      const res = await dpiGateway.executeBankTransferPayment(
+        prnRecord.prn,
+        bankName,
+        bankAccountNumber,
+        bankAccountName,
+        payerEmail
+      );
+      if (res.success && res.data) {
+        setCompletedTransaction({
+          txnId: res.data.transactionId,
+          record: res.data.record
+        });
+        setCompletedReceipt(res.data.receipt);
+      } else {
+        setError(res.error || 'Bank EFT transaction failed.');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Inter-bank settlement network timeout.');
     } finally {
       setIsProcessingPayment(false);
     }
@@ -123,10 +243,10 @@ export const MobileMoneyCheckout: React.FC<MobileMoneyCheckoutProps> = ({
         </button>
         <div>
           <h2 className="text-xl font-bold tracking-tight text-gray-900">
-            Secure Payment
+            Secure Payment Gateway
           </h2>
           <p className="text-xs text-gray-500">
-            Complete your transaction for government services.
+            Cryptographic Clearing & Multi-Channel Clearing House
           </p>
         </div>
       </div>
@@ -156,7 +276,7 @@ export const MobileMoneyCheckout: React.FC<MobileMoneyCheckoutProps> = ({
         </div>
       ) : completedTransaction ? (
         
-        /* SUCCESS CONFIRMATION SCREEN */
+        /* SUCCESS CONFIRMATION SCREEN WITH RECEIPT DISPATCH */
         <div className="bg-white border border-[#edeeef] rounded-md p-6 text-center space-y-5 shadow-sm animate-scale-up">
           <div className="flex justify-center">
             <div className="w-16 h-16 rounded-full bg-[#e2f0d9] text-[#006400] flex items-center justify-center">
@@ -167,26 +287,77 @@ export const MobileMoneyCheckout: React.FC<MobileMoneyCheckoutProps> = ({
           <div className="space-y-1.5">
             <h3 className="text-xl font-black text-gray-900">Payment Successful</h3>
             <p className="text-xs text-gray-500 leading-relaxed max-w-xs mx-auto">
-              Your payment for <span className="font-bold text-black">"{completedTransaction.record.category}"</span> has been cryptographically cleared by the Uganda Revenue Authority (URA).
+              Your payment for <span className="font-bold text-black">"{completedTransaction.record.category}"</span> has been cleared instantly by the Uganda Revenue Authority (URA).
             </p>
           </div>
 
-          <div className="p-4 bg-[#f8f9fa] rounded-sm text-xs text-left divide-y divide-gray-200 border border-gray-150">
-            <div className="py-2 flex justify-between font-semibold">
-              <span className="text-gray-500">Transaction ID:</span>
-              <span className="text-black font-mono font-bold">{completedTransaction.txnId}</span>
+          {/* Real-time Email Dispatch Alert */}
+          <div className="p-3.5 bg-emerald-50 border border-[#c5e1b4] rounded text-left flex items-start gap-3">
+            <div className="p-1 rounded bg-white border border-[#c5e1b4] text-[#006400] shrink-0 mt-0.5">
+              <Mail className="w-4 h-4" />
             </div>
-            <div className="py-2 flex justify-between font-semibold">
-              <span className="text-gray-500">PRN Code:</span>
-              <span className="text-black font-mono font-bold">{completedTransaction.record.prn}</span>
+            <div className="space-y-0.5 text-xs text-[#006400]">
+              <p className="font-black uppercase tracking-wide text-[10px]">Verifiable Receipt Sent</p>
+              <p className="font-medium">
+                A cryptographic payment receipt was sent to your registered address: <span className="font-black text-black underline">{completedReceipt?.payerEmail || payerEmail}</span>
+              </p>
             </div>
-            <div className="py-2 flex justify-between font-semibold">
-              <span className="text-gray-500">Amount Paid:</span>
-              <span className="text-emerald-800 font-mono font-black">UGX {completedTransaction.record.amount.toLocaleString()}</span>
+          </div>
+
+          {/* Cryptographic Verifiable Receipt Layout */}
+          <div className="p-4 bg-[#fcfdfe] rounded border border-gray-200 text-left space-y-3 font-mono relative overflow-hidden">
+            <div className="absolute right-2 top-2 uppercase font-sans text-[8px] font-bold tracking-wider px-1.5 py-0.5 rounded border bg-emerald-100 text-[#006400] border-[#c5e1b4] flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-ping"></span>
+              <span>Cleared (E-Receipt)</span>
             </div>
-            <div className="py-2 flex justify-between font-semibold">
-              <span className="text-gray-500">Payer Name:</span>
-              <span className="text-black font-bold uppercase">{completedTransaction.record.applicantName}</span>
+            
+            <div className="space-y-1 pb-2 border-b border-dashed border-gray-200">
+              <h4 className="text-[10px] font-sans font-black uppercase text-gray-400">Official Payment Receipt</h4>
+              <p className="text-xs font-bold text-gray-900">{completedReceipt?.id || 'RCP-889012'}</p>
+            </div>
+
+            <div className="space-y-1.5 text-[11px] font-semibold text-gray-700">
+              <div className="flex justify-between">
+                <span>PRN Code:</span>
+                <span className="text-black font-bold">{completedTransaction.record.prn}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Service Category:</span>
+                <span className="text-black uppercase text-right max-w-[200px] truncate">{completedTransaction.record.category}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Cleared Amount:</span>
+                <span className="text-emerald-800 font-black">UGX {completedTransaction.record.amount.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Payer Name:</span>
+                <span className="text-black font-bold uppercase">{completedReceipt?.payerName || completedTransaction.record.applicantName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Payment Channel:</span>
+                <span className="text-black font-bold uppercase">{completedReceipt?.paymentDetails || 'Secure DPI Switch'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Core Settlement ID:</span>
+                <span className="text-black font-bold">{completedTransaction.txnId}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Cleared On:</span>
+                <span className="text-gray-500 text-[10px]">
+                  {completedReceipt ? new Date(completedReceipt.timestamp).toLocaleString() : new Date().toLocaleString()}
+                </span>
+              </div>
+            </div>
+
+            {/* Verification Hash signature box */}
+            <div className="pt-2 mt-2 border-t border-dashed border-gray-200 flex items-start gap-1.5 text-[8px] text-gray-400">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-800 shrink-0 mt-0.5" />
+              <div className="space-y-0.5 font-mono">
+                <span className="font-bold text-gray-600 uppercase">Cryptographic Authentication Signature:</span>
+                <p className="break-all font-mono leading-none">
+                  sha256_{btoa(completedTransaction.txnId).substring(0, 48).toLowerCase()}
+                </p>
+              </div>
             </div>
           </div>
 
@@ -268,7 +439,7 @@ export const MobileMoneyCheckout: React.FC<MobileMoneyCheckoutProps> = ({
               >
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 bg-[#f1f3f5] rounded-sm flex items-center justify-center text-black">
-                    <Smartphone className="w-5 h-5" />
+                    <Smartphone className="w-5 h-5 text-gray-700" />
                   </div>
                   <div>
                     <h4 className="font-bold text-sm text-gray-900">Mobile Money</h4>
@@ -282,7 +453,7 @@ export const MobileMoneyCheckout: React.FC<MobileMoneyCheckoutProps> = ({
 
               {/* Collapsible Mobile Money Details */}
               {paymentMethod === 'momo' && (
-                <div className="pt-3 border-t border-gray-100 space-y-4 text-xs animate-slide-in">
+                <div className="pt-3 border-t border-gray-100 space-y-4 text-xs animate-slide-in text-left">
                   
                   {/* Carriers Selection */}
                   <div className="flex gap-4">
@@ -306,7 +477,7 @@ export const MobileMoneyCheckout: React.FC<MobileMoneyCheckoutProps> = ({
                   </div>
 
                   {/* Input Phone details */}
-                  <form onSubmit={handleExecutePayment} className="space-y-3 text-left">
+                  <form onSubmit={handleExecutePayment} className="space-y-3">
                     <div className="space-y-1">
                       <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">
                         Mobile Number
@@ -324,10 +495,27 @@ export const MobileMoneyCheckout: React.FC<MobileMoneyCheckoutProps> = ({
                           className="w-full pl-14 pr-4 py-2.5 border border-[#cfc4c5] rounded-sm text-sm font-mono focus:outline-none focus:border-black font-bold tracking-widest text-left"
                         />
                       </div>
-                      <p className="text-[10px] text-gray-500">
-                        A secure USSD validation prompt will be dispatched immediately.
-                      </p>
                     </div>
+
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider flex items-center justify-between">
+                        <span>Associated Email (for receipt dispatch)</span>
+                        <span className="text-[9px] text-emerald-800 font-bold uppercase tracking-wide">
+                          linked
+                        </span>
+                      </label>
+                      <input
+                        type="email"
+                        value={payerEmail}
+                        onChange={(e) => setPayerEmail(e.target.value)}
+                        placeholder="yourname@example.com"
+                        className="w-full px-3.5 py-2.5 border border-[#cfc4c5] rounded-sm text-sm focus:outline-none focus:border-black font-semibold text-gray-800"
+                      />
+                    </div>
+
+                    <p className="text-[10px] text-gray-500">
+                      A secure USSD validation prompt will be dispatched to your phone immediately.
+                    </p>
 
                     {/* Display validation errors */}
                     {error && (
@@ -360,45 +548,272 @@ export const MobileMoneyCheckout: React.FC<MobileMoneyCheckoutProps> = ({
               )}
             </div>
 
-            {/* 2. Card Method (Out of scope/disabled for security) */}
-            <button
-              type="button"
-              onClick={() => setPaymentMethod('card')}
-              className={`w-full bg-white border ${paymentMethod === 'card' ? 'border-black' : 'border-[#edeeef]'} rounded-md p-4 flex items-center justify-between text-left cursor-pointer`}
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-[#f1f3f5] rounded-sm flex items-center justify-center text-gray-400">
-                  <CreditCard className="w-5 h-5" />
+            {/* 2. Card Method */}
+            <div className={`bg-white border ${paymentMethod === 'card' ? 'border-black' : 'border-[#edeeef]'} rounded-md p-4 space-y-4`}>
+              <button
+                type="button"
+                onClick={() => setPaymentMethod('card')}
+                className="w-full flex items-center justify-between text-left cursor-pointer"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-[#f1f3f5] rounded-sm flex items-center justify-center text-black">
+                    <CreditCard className="w-5 h-5 text-gray-700" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-sm text-gray-900">Debit / Credit Card</h4>
+                    <p className="text-xs text-gray-500">Visa, Mastercard • Cleared Securely via NITA-U</p>
+                  </div>
                 </div>
-                <div>
-                  <h4 className="font-bold text-sm text-gray-900">Debit / Credit Card</h4>
-                  <p className="text-xs text-gray-500">Visa, Mastercard • Offline Sync</p>
+                <div className="w-5 h-5 rounded-full border-2 border-gray-200 flex items-center justify-center">
+                  {paymentMethod === 'card' && <div className="w-2.5 h-2.5 rounded-full bg-black"></div>}
                 </div>
-              </div>
-              <div className="w-5 h-5 rounded-full border-2 border-gray-200 flex items-center justify-center">
-                {paymentMethod === 'card' && <div className="w-2.5 h-2.5 rounded-full bg-black"></div>}
-              </div>
-            </button>
+              </button>
 
-            {/* 3. EFT Bank Transfer (Out of scope/disabled) */}
-            <button
-              type="button"
-              onClick={() => setPaymentMethod('bank')}
-              className={`w-full bg-white border ${paymentMethod === 'bank' ? 'border-black' : 'border-[#edeeef]'} rounded-md p-4 flex items-center justify-between text-left cursor-pointer`}
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-[#f1f3f5] rounded-sm flex items-center justify-center text-gray-400">
-                  <Building2 className="w-5 h-5" />
+              {/* Collapsible Card Details */}
+              {paymentMethod === 'card' && (
+                <div className="pt-3 border-t border-gray-100 space-y-4 text-xs animate-slide-in text-left">
+                  <form onSubmit={handleExecuteCardPayment} className="space-y-3">
+                    
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                        Cardholder Name
+                      </label>
+                      <input
+                        type="text"
+                        value={cardholderName}
+                        onChange={(e) => setCardholderName(e.target.value)}
+                        placeholder="MUKASA SSEWANYANA"
+                        className="w-full px-3.5 py-2.5 border border-[#cfc4c5] rounded-sm text-sm focus:outline-none focus:border-black font-bold uppercase"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                        Card Number
+                      </label>
+                      <input
+                        type="text"
+                        value={cardNumber}
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/\D/g, '');
+                          const formatted = val.match(/.{1,4}/g)?.join(' ') || val;
+                          setCardNumber(formatted.slice(0, 19));
+                        }}
+                        placeholder="4000 1234 5678 9010"
+                        className="w-full px-3.5 py-2.5 border border-[#cfc4c5] rounded-sm text-sm font-mono focus:outline-none focus:border-black font-bold tracking-widest"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                          Expiry Date
+                        </label>
+                        <input
+                          type="text"
+                          value={cardExpiry}
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/\D/g, '');
+                            if (val.length >= 2) {
+                              setCardExpiry(`${val.slice(0, 2)}/${val.slice(2, 4)}`);
+                            } else {
+                              setCardExpiry(val);
+                            }
+                          }}
+                          placeholder="MM/YY"
+                          maxLength={5}
+                          className="w-full px-3.5 py-2.5 border border-[#cfc4c5] rounded-sm text-sm font-mono focus:outline-none focus:border-black font-bold text-center"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                          CVV
+                        </label>
+                        <input
+                          type="password"
+                          value={cardCvv}
+                          onChange={(e) => setCardCvv(e.target.value.replace(/\D/g, '').slice(0, 3))}
+                          placeholder="•••"
+                          maxLength={3}
+                          className="w-full px-3.5 py-2.5 border border-[#cfc4c5] rounded-sm text-sm font-mono focus:outline-none focus:border-black font-bold text-center tracking-widest"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider flex items-center justify-between">
+                        <span>Payer Email (for cryptographic receipt)</span>
+                        <span className="text-[9px] text-[#006400] font-black lowercase tracking-wide flex items-center gap-0.5">
+                          <Check className="w-2.5 h-2.5" /> associated address
+                        </span>
+                      </label>
+                      <input
+                        type="email"
+                        value={payerEmail}
+                        onChange={(e) => setPayerEmail(e.target.value)}
+                        placeholder="yourname@example.com"
+                        className="w-full px-3.5 py-2.5 border border-[#cfc4c5] rounded-sm text-sm focus:outline-none focus:border-black font-semibold text-gray-800"
+                      />
+                    </div>
+
+                    {/* Display validation errors */}
+                    {error && (
+                      <div className="p-2 bg-[#ffdad6] text-[#93000a] text-[11px] rounded-sm flex items-center gap-1.5 font-semibold">
+                        <AlertTriangle className="w-3.5 h-3.5" />
+                        <span>{error}</span>
+                      </div>
+                    )}
+
+                    {/* Pay Button */}
+                    <button
+                      type="submit"
+                      disabled={isProcessingPayment}
+                      className="w-full bg-black text-white py-3.5 rounded-sm font-bold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 min-h-[48px]"
+                    >
+                      {isProcessingPayment ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin text-[#fdcc00]" />
+                          <span>Authorizing with Card Acquirer...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Lock className="w-4 h-4 text-[#fdcc00]" />
+                          <span>Pay UGX {prnRecord.amount.toLocaleString()} Now</span>
+                        </>
+                      )}
+                    </button>
+                  </form>
                 </div>
-                <div>
-                  <h4 className="font-bold text-sm text-gray-900">EFT / Bank Transfer</h4>
-                  <p className="text-xs text-gray-500">Direct bank deposit via PRN</p>
+              )}
+            </div>
+
+            {/* 3. EFT Bank Transfer */}
+            <div className={`bg-white border ${paymentMethod === 'bank' ? 'border-black' : 'border-[#edeeef]'} rounded-md p-4 space-y-4`}>
+              <button
+                type="button"
+                onClick={() => setPaymentMethod('bank')}
+                className="w-full flex items-center justify-between text-left cursor-pointer"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-[#f1f3f5] rounded-sm flex items-center justify-center text-black">
+                    <Building2 className="w-5 h-5 text-gray-700" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-sm text-gray-900">EFT / Bank Transfer</h4>
+                    <p className="text-xs text-gray-500">Direct real-time clearing bank deposit via PRN</p>
+                  </div>
                 </div>
-              </div>
-              <div className="w-5 h-5 rounded-full border-2 border-gray-200 flex items-center justify-center">
-                {paymentMethod === 'bank' && <div className="w-2.5 h-2.5 rounded-full bg-black"></div>}
-              </div>
-            </button>
+                <div className="w-5 h-5 rounded-full border-2 border-gray-200 flex items-center justify-center">
+                  {paymentMethod === 'bank' && <div className="w-2.5 h-2.5 rounded-full bg-black"></div>}
+                </div>
+              </button>
+
+              {/* Collapsible Bank Details */}
+              {paymentMethod === 'bank' && (
+                <div className="pt-3 border-t border-gray-100 space-y-4 text-xs animate-slide-in text-left">
+                  
+                  {/* EFT Warning Note */}
+                  <div className="p-2.5 bg-neutral-50 border border-gray-150 rounded text-[11px] font-semibold text-gray-600 flex gap-2">
+                    <Building2 className="w-4 h-4 text-gray-400 shrink-0" />
+                    <p className="leading-normal text-gray-500">
+                      EFT / Real-time Bank transfer queries require automated clearing house verification. Clearing occurs instantly via the UgandaOne DPI switch.
+                    </p>
+                  </div>
+
+                  <form onSubmit={handleExecuteBankPayment} className="space-y-3">
+                    
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                        Select Clearing Bank
+                      </label>
+                      <select
+                        value={bankName}
+                        onChange={(e) => setBankName(e.target.value)}
+                        className="w-full bg-white px-3 py-2.5 border border-[#cfc4c5] rounded-sm text-sm focus:outline-none focus:border-black font-bold uppercase"
+                      >
+                        <option value="Stanbic Bank Uganda">Stanbic Bank Uganda</option>
+                        <option value="Standard Chartered Bank">Standard Chartered Bank</option>
+                        <option value="Centenary Bank">Centenary Bank (CenteMobile)</option>
+                        <option value="DFCU Bank">DFCU Bank</option>
+                        <option value="Absa Bank Uganda">Absa Bank Uganda</option>
+                        <option value="Bank of Baroda">Bank of Baroda</option>
+                        <option value="Equity Bank Uganda">Equity Bank Uganda</option>
+                      </select>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                          Account Number
+                        </label>
+                        <input
+                          type="text"
+                          value={bankAccountNumber}
+                          onChange={(e) => setBankAccountNumber(e.target.value.replace(/\D/g, ''))}
+                          placeholder="1029348576"
+                          className="w-full px-3.5 py-2.5 border border-[#cfc4c5] rounded-sm text-sm font-mono focus:outline-none focus:border-black font-bold"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                          Account Holder Name
+                        </label>
+                        <input
+                          type="text"
+                          value={bankAccountName}
+                          onChange={(e) => setBankAccountName(e.target.value)}
+                          placeholder="MUKASA SSEWANYANA"
+                          className="w-full px-3.5 py-2.5 border border-[#cfc4c5] rounded-sm text-sm focus:outline-none focus:border-black font-bold uppercase"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider flex items-center justify-between">
+                        <span>Payer Email (for cryptographic receipt)</span>
+                        <span className="text-[9px] text-[#006400] font-black lowercase tracking-wide flex items-center gap-0.5">
+                          <Check className="w-2.5 h-2.5" /> associated address
+                        </span>
+                      </label>
+                      <input
+                        type="email"
+                        value={payerEmail}
+                        onChange={(e) => setPayerEmail(e.target.value)}
+                        placeholder="yourname@example.com"
+                        className="w-full px-3.5 py-2.5 border border-[#cfc4c5] rounded-sm text-sm focus:outline-none focus:border-black font-semibold text-gray-800"
+                      />
+                    </div>
+
+                    {/* Display validation errors */}
+                    {error && (
+                      <div className="p-2 bg-[#ffdad6] text-[#93000a] text-[11px] rounded-sm flex items-center gap-1.5 font-semibold">
+                        <AlertTriangle className="w-3.5 h-3.5" />
+                        <span>{error}</span>
+                      </div>
+                    )}
+
+                    {/* Pay Button */}
+                    <button
+                      type="submit"
+                      disabled={isProcessingPayment}
+                      className="w-full bg-black text-white py-3.5 rounded-sm font-bold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 min-h-[48px]"
+                    >
+                      {isProcessingPayment ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin text-[#fdcc00]" />
+                          <span>Initiating EFT Clearing Settlement...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Lock className="w-4 h-4 text-[#fdcc00]" />
+                          <span>Authorize EFT Transfer of UGX {prnRecord.amount.toLocaleString()}</span>
+                        </>
+                      )}
+                    </button>
+                  </form>
+                </div>
+              )}
+            </div>
 
           </div>
 

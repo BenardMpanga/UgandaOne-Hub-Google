@@ -13,9 +13,23 @@ export interface CitizenProfile {
   cardStatus: 'VERIFIED' | 'PENDING' | 'ERROR';
   isCardLocked: boolean;
   phoneNumber: string;
+  email?: string;
   avatarUrl?: string;
   address: string;
   signatureUrl?: string;
+}
+
+export interface PaymentReceipt {
+  id: string;
+  prn: string;
+  category: string;
+  amount: number;
+  payerName: string;
+  payerEmail: string;
+  paymentMethod: 'momo' | 'card' | 'bank';
+  paymentDetails: string; // Phone, last 4 digits of card, or bank name
+  transactionId: string;
+  timestamp: string;
 }
 
 export interface TinDetails {
