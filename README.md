@@ -120,8 +120,31 @@ UgandaOne features an embedded **DPI Developer & Sandbox Console** to let engine
   * Toggles the gateway into an offline mode, simulating dropouts.
   * The application displays warning banners and engages local caches for read-only safety, testing the resiliency of state-machine queries.
 
-### 🔗 Orchestrated Life-Journey Workflows
-To prevent citizens from making multiple physical trips, UgandaOne hosts complex multi-agency pipelines under a **Workflows** panel:
+### 🔗 Orchestrated Life-Journey & Cross-Agency "Life Event" Pipelines
+
+To prevent citizens from making multiple physical trips, UgandaOne hosts complex multi-agency pipelines under a **Workflows** panel, utilizing strict state machines, stateless tokens (`X-UgandaOne-NIN-Token`), and ARIA-compliant steppers (`ComponentStepper`):
+
+1. **New Child Registration Workflow (`NewBornEventWizard`)**:
+   * *Step 1 (MoH Facility)*: Parent is notified of incoming cryptographic live-birth hospital payload.
+   * *Step 2 (NIRA)*: Birth is registered to generate a new NIN and birth certificate.
+   * *Step 3 (MoH)*: Initialize infant Electronic Immunization Record & childhood vaccine schedules.
+   * *Step 4 (NSSF)*: Flags parental benefits eligibility based on employer records.
+2. **Marriage & Legal Status Sync Workflow (`MaritalStatusSync`)**:
+   * *Step 1 (NIRA)*: Submits civil marriage certificate and verifies marital status. Updates legal name.
+   * *Step 2 (Internal Affairs)*: Passport profile updated and reprint queued.
+   * *Step 3 (UDLS)*: Driving permit registry updated under the new legal name.
+   * *Step 4 (URA)*: Tax directories flagged for optional joint returns & marital exemptions.
+3. **Retirement & Pension Transition Workflow (`RetirementOnboarding`)**:
+   * *Step 1 (NIRA)*: Profile age matched to retirement threshold (60 years) to trigger Senior Citizen status.
+   * *Step 2 (NSSF)*: Aggregates contributions, generating active pension claim file & monthly payouts.
+   * *Step 3 (MoH)*: Registers profile for senior citizen healthcare subsidies.
+4. **Residence Relocation Sync Workflow (`AddressRelocationSync`)**:
+   * *Step 1 (Umeme)*: Synchronizes electricity billing address & adjusts grid zone tariffs.
+   * *Step 2 (NWSC)*: Coordinates water utility ledger matching the new plot location.
+   * *Step 3 (Local Government)*: Notifies local District/Municipal Council to recalibrate local business licenses & property tax rates.
+
+> [!IMPORTANT]
+> **Transactional Rollback Policy**: To maintain registry consistency, all life event pipelines implement transactional rollbacks powered by React `useReducer` state machines. If any intermediate hop fails (e.g., NWSC rejects address or MoH gateway is offline), preceding steps are automatically revoked and reverted cleanly across all involved state endpoints, logged via live diagnostic consoles.
 
 1. **Business Setup Journey**:
    * *Step 1 (URSB)*: Verifies and reserves business name.
