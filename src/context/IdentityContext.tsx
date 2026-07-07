@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { CitizenProfile } from '../types';
-import { dpiGateway } from '../lib/dpiGateway';
+import { dpiGateway, subscribeToAuditLogs, AuditLogEntry } from '../lib/dpiGateway';
 
 interface IdentityContextType {
   token: string | null;
@@ -15,6 +15,7 @@ interface IdentityContextType {
   offlineMode: boolean;
   setOfflineMode: (enabled: boolean) => void;
   clearError: () => void;
+  auditLogs: AuditLogEntry[];
 }
 
 const IdentityContext = createContext<IdentityContextType | undefined>(undefined);
@@ -29,12 +30,21 @@ export const IdentityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [error, setError] = useState<string | null>(null);
   const [latencyEnabled, setLatencyEnabled] = useState<boolean>(true);
   const [offlineMode, setOfflineMode] = useState<boolean>(false);
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
 
   // Synchronize gateway settings with state
   useEffect(() => {
     dpiGateway.latencyEnabled = latencyEnabled;
     dpiGateway.offlineMode = offlineMode;
   }, [latencyEnabled, offlineMode]);
+
+  // Subscribe to decentralized audit logging events
+  useEffect(() => {
+    const unsubscribe = subscribeToAuditLogs((logs) => {
+      setAuditLogs(logs);
+    });
+    return () => unsubscribe();
+  }, []);
 
   const login = async (nin: string, pin: string): Promise<boolean> => {
     setIsLoading(true);
@@ -102,7 +112,8 @@ export const IdentityProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setLatencyEnabled,
         offlineMode,
         setOfflineMode,
-        clearError
+        clearError,
+        auditLogs
       }}
     >
       {children}

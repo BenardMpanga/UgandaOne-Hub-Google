@@ -78,17 +78,31 @@ export const WorkflowsView: React.FC<WorkflowsViewProps> = ({ onInitiatePayment 
   };
 
   const handleRegisterInstantTIN = async () => {
+    if (!token) return;
     setBizLoading(true);
     setBizError(null);
-    // Simulate generation of dynamic new corporate TIN
-    setTimeout(() => {
-      const prefix = '800';
-      const rand = Math.floor(1000000 + Math.random() * 9000000).toString();
-      const generatedCorporateTin = `${prefix}-${rand.substring(0, 3)}-${rand.substring(3)}`;
-      setAssignedTin(generatedCorporateTin);
-      setBizStep(3);
+    try {
+      // Secure Zero-Knowledge query to verify individual tax status eligibility first
+      const taxRes = await dpiGateway.verifyTaxCompliance(token);
+      if (!taxRes.success) {
+        setBizError(taxRes.error || 'Tax standing compliance check failed. Verification aborted.');
+        setBizLoading(false);
+        return;
+      }
+
+      // Simulate generation of dynamic new corporate TIN
+      setTimeout(() => {
+        const prefix = '800';
+        const rand = Math.floor(1000000 + Math.random() * 9000000).toString();
+        const generatedCorporateTin = `${prefix}-${rand.substring(0, 3)}-${rand.substring(3)}`;
+        setAssignedTin(generatedCorporateTin);
+        setBizStep(3);
+        setBizLoading(false);
+      }, 1200);
+    } catch (err: any) {
+      setBizError(err.message || 'Interoperability failure during tax audits.');
       setBizLoading(false);
-    }, 1200);
+    }
   };
 
   const handleGenerateTradingLicensePRN = async () => {
@@ -116,6 +130,13 @@ export const WorkflowsView: React.FC<WorkflowsViewProps> = ({ onInitiatePayment 
     setBizLoading(true);
     setBizError(null);
     try {
+      // Enforce zero-knowledge check for age & citizenship eligibility first under zero-trust directives
+      const zkpRes = await dpiGateway.verifyAgeAndCitizenship(token);
+      if (!zkpRes.success) {
+        setBizError(zkpRes.error || 'Zero-Knowledge Proof check failed. Verification aborted.');
+        return;
+      }
+      
       const res = await dpiGateway.getDrivingPermit(token);
       if (res.success && res.data) {
         setPermitData(res.data);

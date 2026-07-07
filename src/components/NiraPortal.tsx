@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 
 export const NiraPortal: React.FC = () => {
-  const { profile, token, toggleCardLock, isLoading: isIdentityLoading } = useIdentity();
+  const { profile, token, toggleCardLock, isLoading: isIdentityLoading, auditLogs } = useIdentity();
   const [activeTab, setActiveTab] = useState<'documents' | 'history'>('documents');
   const [permit, setPermit] = useState<any>(null);
   const [vehicles, setVehicles] = useState<any[]>([]);
@@ -31,6 +31,7 @@ export const NiraPortal: React.FC = () => {
   const [activeModal, setActiveModal] = useState<'qr' | 'share' | 'none'>('none');
   const [isDownloading, setIsDownloading] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [filterNode, setFilterNode] = useState<string>('ALL');
 
   useEffect(() => {
     const fetchPermitAndVehicles = async () => {
@@ -396,6 +397,106 @@ export const NiraPortal: React.FC = () => {
 
         </div>
 
+      </div>
+
+      {/* 4. DATA ACCESS AUDIT LOG (ESTONIAN X-ROAD MODEL) */}
+      <div className="bg-white rounded-md border border-[#edeeef] shadow-sm overflow-hidden">
+        {/* Header */}
+        <div className="p-4 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#fcfdfe]">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-[#006400]" />
+              <h3 className="text-xs font-black tracking-wider text-gray-900 uppercase">
+                Citizen Data Access Audit Log
+              </h3>
+            </div>
+            <p className="text-[10px] text-gray-500 font-medium">
+              Real-time accountability trail of decentralized queries matching your identity.
+            </p>
+          </div>
+          
+          {/* Agency Node Filter Dropdown */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="text-[10px] font-bold text-gray-400 uppercase">Node:</span>
+            <select
+              value={filterNode}
+              onChange={(e) => setFilterNode(e.target.value)}
+              className="bg-white border border-gray-200 text-[10px] font-bold uppercase p-1.5 rounded-sm focus:outline-none focus:border-black cursor-pointer text-xs"
+            >
+              <option value="ALL">All Nodes</option>
+              <option value="NIRA_NODE">NIRA Node</option>
+              <option value="URA_NODE">URA Node</option>
+              <option value="MoWT_NODE">MoWT Node</option>
+              <option value="URSB_NODE">URSB Node</option>
+              <option value="NSSF_NODE">NSSF Node</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Audit Log list */}
+        <div className="divide-y divide-gray-100 max-h-[350px] overflow-y-auto">
+          {auditLogs.filter(log => filterNode === 'ALL' || log.agencyNode === filterNode).length === 0 ? (
+            <div className="p-8 text-center text-xs text-gray-400 font-medium">
+              No transactions logged for the selected agency node.
+            </div>
+          ) : (
+            auditLogs
+              .filter(log => filterNode === 'ALL' || log.agencyNode === filterNode)
+              .map((log) => (
+                <div key={log.id} className="p-4 hover:bg-[#fafbfc] transition-colors space-y-2 text-left">
+                  <div className="flex items-start justify-between gap-4 text-xs">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-mono text-[10px] font-bold bg-[#f1f3f5] px-1.5 py-0.5 rounded-sm text-gray-600 border border-gray-200">
+                          {log.id}
+                        </span>
+                        <span className="font-bold text-gray-900">{log.actor}</span>
+                      </div>
+                      <p className="text-gray-500 text-[11px] font-semibold">{log.action}</p>
+                    </div>
+                    
+                    <div className="text-right shrink-0 space-y-1">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-bold border uppercase tracking-wider ${
+                        log.status === 'DECENTRALIZED_VERIFIED'
+                          ? 'bg-[#e2f0d9] text-[#006400] border-[#c5e1b4]'
+                          : log.status === 'SUCCESS'
+                          ? 'bg-[#e8f4fd] text-[#0066cc] border-[#bce0fd]'
+                          : 'bg-[#fce8e6] text-[#ba1a1a] border-[#f9c1be]'
+                      }`}>
+                        {log.status === 'DECENTRALIZED_VERIFIED' ? 'ZKP VERIFIED' : log.status}
+                      </span>
+                      <p className="text-[9px] text-gray-400 font-mono font-medium">
+                        {new Date(log.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Data Minimization Box */}
+                  <div className="p-2.5 bg-gray-50 rounded border border-gray-100 flex items-start gap-2 text-[10px] font-mono text-gray-600">
+                    <div className="p-1 rounded bg-white border border-gray-200 shrink-0">
+                      <Lock className="w-3.5 h-3.5 text-[#735c00]" />
+                    </div>
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-bold text-gray-700 uppercase text-[9px]">Scope of Transmitted Payload:</span>
+                        <span className="bg-emerald-100 text-[#006400] font-bold px-1 rounded-sm text-[8px] uppercase tracking-wide">
+                          Data Minimized
+                        </span>
+                      </div>
+                      <p className="text-gray-500 break-all">{log.dataAccessed}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between text-[9px] font-mono font-medium text-gray-400 pt-1">
+                    <span>Node IP Status: Isolated Enclave Encrypted</span>
+                    <span className="font-bold text-black bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200 uppercase tracking-wider">
+                      {log.agencyNode}
+                    </span>
+                  </div>
+                </div>
+              ))
+          )}
+        </div>
       </div>
 
       {/* Trust & encryption disclaimer card at bottom */}
