@@ -1,0 +1,8 @@
+{
+  "name": "UgandaOne",
+  "description": "Unified digital service hub for Ugandan citizens, integrating foundational identity, taxation, business registry, social security, transport, and secure payment flows.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
