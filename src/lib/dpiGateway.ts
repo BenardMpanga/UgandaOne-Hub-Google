@@ -28,7 +28,7 @@ class NiraNodeService {
   private niraDb: CitizenProfile = {
     nin: 'CM89021105G12F',
     fullName: 'MUKASA SSEWANYANA',
-    pin: '1962', // Independent Security PIN
+    pin: '196200', // Independent Security PIN
     gender: 'MALE',
     dateOfBirth: '1989-10-12',
     nationality: 'UGANDAN',

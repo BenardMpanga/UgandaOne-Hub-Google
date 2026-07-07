@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'motion/react';
 export const LoginScreen: React.FC = () => {
   const { login, isLoading, error, clearError } = useIdentity();
   const [nin, setNin] = useState('CM89021105G12F'); // Default NIN
-  const [pin, setPin] = useState('1962'); // Default PIN
+  const [pin, setPin] = useState('196200'); // Default PIN
   const [showPin, setShowPin] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
 
@@ -50,7 +50,11 @@ export const LoginScreen: React.FC = () => {
       return;
     }
     if (!pin.trim()) {
-      setLocalError('Please enter your 4-digit Security PIN.');
+      setLocalError('Please enter your 6-digit Security PIN.');
+      return;
+    }
+    if (pin.length !== 6) {
+      setLocalError('Invalid PIN. Please enter your 6-digit Security PIN to proceed.');
       return;
     }
 
@@ -59,7 +63,7 @@ export const LoginScreen: React.FC = () => {
 
   const handleBiometricLogin = async () => {
     // Biometric bypass automatically logs in with the pre-approved sandbox credentials
-    await runHandshakeSequence('CM89021105G12F', '1962');
+    await runHandshakeSequence('CM89021105G12F', '196200');
   };
 
   return (
@@ -150,7 +154,7 @@ export const LoginScreen: React.FC = () => {
                 </label>
                 <button
                   type="button"
-                  onClick={() => alert('Demo notice: Sandbox uses PIN 1962.')}
+                  onClick={() => alert('Demo notice: Sandbox uses PIN 196200.')}
                   className="text-xs font-semibold text-[#735c00] hover:underline cursor-pointer"
                 >
                   Forgot PIN?
@@ -164,8 +168,8 @@ export const LoginScreen: React.FC = () => {
                     setPin(e.target.value.replace(/\D/g, ''));
                     if (error || localError) clearError();
                   }}
-                  placeholder="••••"
-                  maxLength={4}
+                  placeholder="••••••"
+                  maxLength={6}
                   className="w-full px-4 py-3 pr-11 bg-white border border-[#cfc4c5] rounded-sm text-sm tracking-widest focus:outline-none focus:border-2 focus:border-black transition-all text-center font-bold"
                 />
                 <button
